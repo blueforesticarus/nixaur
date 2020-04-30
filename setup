@@ -1,0 +1,47 @@
+#!/bin/bash
+
+download_mirrorlist (){
+    COUNTRY=US#
+    MIRRORS="https://www.archlinux.org/mirrorlist/?country=$COUNTRY&protocol=https&ip_version=4"
+
+    echo "$MIRRORS"
+    curl -L "$MIRRORS" -s | grep -F '#Server = ' | sed 's/#Server/Server/g' > .mirrorlist
+}
+download_tar (){
+    MIRROR="$( cat .mirrorlist | head -1 | sed -n -e 's/\$repo\/os\/\$arch//p' )iso/latest/"
+    MIRROR="$( echo "$MIRROR" | sed -n -e 's/Server = //p' )"
+    echo "$MIRROR" 
+    FILE="$(curl -L "$MIRROR" -s | grep -o 'archlinux-bootstrap-[^"]*\.tar\.gz' | head -1)"
+
+    echo "$MIRROR$FILE"
+    curl -L "$MIRROR$FILE" -s > $FILE
+
+    #TODO verify gpg
+}
+
+download_mirrorlist #always get fresh mirrorlist
+DATE="$(date +'%Y.%m.01')"
+FILE=archlinux-bootstrap-$DATE-x86_64.tar.gz
+if [ ! -f "$FILE" ]; then
+    download_tar
+    if [ ! -f "$FILE" ]; then 
+        echo "ABORT. Could not get bootstrap." >&2
+        exit 1
+    fi
+fi
+
+sudo umount root.x86_64
+sudo rm -rf root.x86_64
+tar xzf "$FILE" --delay-directory-restore
+chmod -R +rwx root.x86_64
+sudo mount --bind root.x86_64 root.x86_64
+sudo mount --make-rslave --rbind arch root.x86_64/mnt
+sudo ./root.x86_64/bin/arch-chroot root.x86_64 pacman-key --init
+sudo ./root.x86_64/bin/arch-chroot root.x86_64 pacman-key --populate archlinux
+cat .mirrorlist | head -10 >> root.x86_64/etc/pacman.d/mirrorlist
+sudo ./root.x86_64/bin/arch-chroot root.x86_64 pacman -Syy
+sudo ./root.x86_64/bin/arch-chroot root.x86_64 
+
+
+
+
